@@ -42,5 +42,10 @@
     "music",
     "smtc",
     "now-playing"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Soyoanon-mygo/dsh-music-companion.git",
+    "directory": "packages/watcher"
+  }
 }

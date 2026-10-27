@@ -1,6 +1,6 @@
 {
   "name": "@dsh-music/mcp-music",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP tools that let a DSH agent see what you're listening to.",
   "license": "MIT",
   "type": "module",
@@ -21,5 +21,10 @@
     "mcp",
     "music",
     "now-playing"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Soyoanon-mygo/dsh-music-companion.git",
+    "directory": "packages/mcp-music"
+  }
 }

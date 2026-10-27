@@ -1,6 +1,6 @@
 {
   "name": "@dsh-music/music-hub",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Tiny state hub for dsh-music-companion. Zero dependencies.",
   "license": "MIT",
   "type": "module",
@@ -17,5 +17,10 @@
     "dsh",
     "music",
     "now-playing"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Soyoanon-mygo/dsh-music-companion.git",
+    "directory": "packages/music-hub"
+  }
 }

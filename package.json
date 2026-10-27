@@ -1,8 +1,8 @@
 {
   "name": "dsh-music-companion",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Let your DSH agent know what you're listening to 鈥?and eventually recommend music back.",
+  "description": "Let your DSH agent know what you're listening to — and eventually recommend music back.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -13,5 +13,21 @@
     "watcher": "node packages/watcher/watcher.mjs",
     "mcp": "node packages/mcp-music/src/server.mjs",
     "test:smoke": "node scripts/smoke.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "music",
+    "now-playing",
+    "smtc",
+    "netease"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Soyoanon-mygo/dsh-music-companion.git"
+  },
+  "homepage": "https://github.com/Soyoanon-mygo/dsh-music-companion#readme",
+  "bugs": {
+    "url": "https://github.com/Soyoanon-mygo/dsh-music-companion/issues"
   }
 }
