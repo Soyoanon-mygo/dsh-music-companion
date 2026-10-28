@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>推荐收件箱 · Music Companion</title>
+    <link rel="stylesheet" href="/recommendations/inbox.css" />
+    <script src="/recommendations/inbox.js" defer></script>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <a
+          class="brand"
+          href="/recommendations"
+          aria-label="Music Companion 推荐收件箱"
+          ><span class="brand-icon" aria-hidden="true"
+            ><i></i><i></i><i></i><i></i></span
+          ><span>companion<span class="brand-sub">你的音乐伙伴</span></span></a
+        >
+        <div class="nav-caption">你的音乐空间</div>
+        <nav class="filters" aria-label="推荐状态">
+          <button type="button" data-status="pending" aria-pressed="true">
+            <span class="nav-icon" aria-hidden="true">◈</span
+            ><span>待听清单</span><span data-count="pending">0</span>
+          </button>
+          <button type="button" data-status="listened" aria-pressed="false">
+            <span class="nav-icon" aria-hidden="true">✓</span><span>已听过</span
+            ><span data-count="listened">0</span>
+          </button>
+          <button type="button" data-status="skipped" aria-pressed="false">
+            <span class="nav-icon" aria-hidden="true">↷</span><span>已跳过</span
+            ><span data-count="skipped">0</span>
+          </button>
+          <button type="button" data-status="all" aria-pressed="false">
+            <span class="nav-icon" aria-hidden="true">≡</span
+            ><span>全部推荐</span><span data-count="all">0</span>
+          </button>
+        </nav>
+        <div class="sidebar-note">
+          <div class="mini-record" aria-hidden="true"></div>
+          <p>下一首，<br /><strong>听你的。</strong></p>
+          <span>发现音乐，也发现自己。</span>
+        </div>
+        <div class="sidebar-footer">
+          <span class="avatar" aria-hidden="true">M</span>
+          <div>Music Companion<small>DSH 音乐空间</small></div>
+          <span class="footer-dot" aria-hidden="true"></span>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div class="breadcrumb">
+            你的音乐空间<span>/</span><strong id="current-filter">待听</strong>
+          </div>
+          <div class="connection">
+            <span id="connection-state">尚未连接</span
+            ><button id="disconnect" type="button" hidden>断开</button>
+          </div>
+        </header>
+        <section class="hero intro" aria-labelledby="page-title">
+          <div class="hero-copy">
+            <p class="eyebrow"><span></span> CURATED FOR YOU</p>
+            <h1 id="page-title">下一首，<br />正合心意<span>。</span></h1>
+            <p class="intro-copy">
+              给耳朵换个风景。<br />来自你的音乐伙伴，每一首都有理由。
+            </p>
+            <div class="hero-tag">
+              <span aria-hidden="true">✦</span> 随时听，慢慢发现
+            </div>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <div class="art-halo"></div>
+            <div class="hero-vinyl"></div>
+            <div class="hero-sleeve">
+              <span class="sleeve-top">COMPANION<br />SELECTS / VOL.01</span>
+              <div class="sleeve-orbit"></div>
+              <span class="sleeve-title">new<br /><i>perspectives.</i></span
+              ><span class="sleeve-bottom">GOOD MUSIC. BETTER MOMENTS.</span>
+            </div>
+            <span class="art-star">✳</span>
+            <div class="art-caption">A NEW SOUND, A NEW MOOD.</div>
+          </div>
+        </section>
+
+        <section id="login" class="login-panel" aria-labelledby="login-title">
+          <div>
+            <span class="section-kicker">LET'S GET STARTED</span>
+            <h2 id="login-title">打开你的推荐收件箱</h2>
+            <p>连接音乐空间，查看推荐，也留下一点你的想法。</p>
+          </div>
+          <form id="connect-form">
+            <label for="token">Hub 访问令牌</label>
+            <div class="token-row">
+              <input
+                id="token"
+                type="password"
+                autocomplete="off"
+                required
+                placeholder="输入访问令牌"
+              /><button class="primary" type="submit">
+                连接收件箱 <span aria-hidden="true">→</span>
+              </button>
+            </div>
+            <p class="form-hint">
+              内置 hub 默认令牌为
+              local-dev；自定义令牌见部署配置。仅在当前标签页保存。
+            </p>
+          </form>
+        </section>
+
+        <div
+          id="message"
+          class="message"
+          role="status"
+          aria-live="polite"
+          hidden
+        ></div>
+        <section id="collection" hidden aria-labelledby="collection-title">
+          <div class="collection-header">
+            <div>
+              <span class="section-kicker">YOUR NEXT FAVORITE</span>
+              <h2 id="collection-title">待听清单</h2>
+              <p id="collection-caption">新的声音，等你发现。</p>
+            </div>
+            <div class="collection-actions">
+              <label class="search"
+                ><span class="visually-hidden">搜索推荐</span
+                ><input
+                  id="search"
+                  type="search"
+                  placeholder="搜索歌名、歌手、反馈" /></label
+              ><button
+                id="refresh"
+                class="refresh"
+                type="button"
+                aria-label="刷新推荐"
+              >
+                ↻
+              </button>
+            </div>
+          </div>
+          <div id="cards" class="cards"></div>
+          <div id="empty" class="empty" hidden>
+            <div class="empty-disc" aria-hidden="true">♫</div>
+            <h3 id="empty-title">你的下一首，还在路上</h3>
+            <p id="empty-copy">
+              和音乐伙伴说“推荐一首歌”，从这里发现新的喜欢。
+            </p>
+          </div>
+          <div class="collection-footer">
+            <span id="result-count">0 首推荐</span
+            ><span>打开歌曲页不会标记已听，实际播放后自动更新。</span>
+          </div>
+        </section>
+        <footer class="page-footer">
+          <span>MADE FOR YOUR MOMENT.</span
+          ><span
+            >MUSIC COMPANION
+            <span class="footer-spark" aria-hidden="true">✦</span></span
+          >
+        </footer>
+      </main>
+    </div>
+
+    <template id="card-template"
+      ><article class="card">
+        <div class="track-cover">
+          <div class="cover-grain"></div>
+          <div class="cover-orb"></div>
+          <span class="cover-word" aria-hidden="true"></span>
+          <div class="card-top">
+            <span class="track-number"></span><span class="status-tag"></span>
+          </div>
+          <span class="cover-caption">A SOUND WORTH SHARING</span>
+        </div>
+        <div class="card-body">
+          <div class="title-row">
+            <h3 class="track-title"></h3>
+            <time></time>
+          </div>
+          <p class="track-artist"></p>
+          <p class="reason"></p>
+          <p class="existing-feedback" hidden></p>
+          <div class="track-actions">
+            <a class="song-link" target="_blank" rel="noopener noreferrer"
+              >去听这首 <span aria-hidden="true">↗</span></a
+            >
+            <div class="status-actions"></div>
+          </div>
+          <details class="feedback">
+            <summary>留一句反馈 <span>选填</span></summary>
+            <label
+              ><span class="visually-hidden">给这首歌的反馈</span
+              ><textarea
+                rows="2"
+                maxlength="500"
+                placeholder="喜欢哪里？或哪里不合口味？"
+              ></textarea></label
+            ><button class="save-note" type="button">保存反馈</button>
+          </details>
+        </div>
+      </article></template
+    >
+  </body>
+</html>

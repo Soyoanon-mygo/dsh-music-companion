@@ -1,5 +1,5 @@
 /**
- * tools — 四个音乐工具，由 DSH 宿主直接注册（不走 MCP）
+ * tools — 音乐工具，由 DSH 宿主直接注册（不走 MCP）
  *
  * 为什么不走 MCP：
  *   MCP 需要 cordis.patch.yml 里写一个绝对路径（指向本包内的 server.mjs），
@@ -9,6 +9,8 @@
  * 工具的实现和 packages/mcp-music 里的那份完全一致 —— 都走 HTTP 调 hub，
  * 所以"hub 在本地"和"hub 在远端服务器"两种用法行为一样。
  */
+
+import { createRecommendationTools } from './recommendation-tools.mjs';
 
 /* ------------------------------------------------------------------ */
 /* hub 客户端                                                          */
@@ -125,11 +127,12 @@ function describeTaste(taste) {
 /* ------------------------------------------------------------------ */
 
 /**
- * 返回可直接塞给 `ctx.tools.register()` 的四个定义。
+ * 返回可直接塞给 `ctx.tools.register()` 的工具定义。
  * 不依赖 defineTool：parameters 直接就是 JSON Schema，output.schema 是结果类型。
  */
 export function createMusicTools({ hubUrl, token }) {
   const hub = makeClient(hubUrl, token);
+  const inboxUrl = `${String(hubUrl || 'http://127.0.0.1:8787').replace(/\/+$/, '')}/recommendations`;
 
   /** 统一把异常转成"读不到"，让 agent 知道失败而不是编答案 */
   const fail = (err) => ({
@@ -138,6 +141,7 @@ export function createMusicTools({ hubUrl, token }) {
   });
 
   return [
+    ...createRecommendationTools(hub, inboxUrl),
     {
       name: 'music_now_playing',
       description:
@@ -194,7 +198,7 @@ export function createMusicTools({ hubUrl, token }) {
     {
       name: 'music_recommend',
       description:
-        '把一首歌推荐给主人。你了解了他的口味之后可以主动推，推完会出现在桌面端的待推队列里。reason 要写人话，会原样展示给他看。',
+        '把一首歌放进推荐收件箱。推之前先用 music_recommendations 看待听和已跳过的歌；重复待听不会新增。reason 会原样展示给主人。',
       parameters: {
         type: 'object',
         properties: {
@@ -214,10 +218,7 @@ export function createMusicTools({ hubUrl, token }) {
         const title = String(args.title || '').trim();
         const artist = String(args.artist || '').trim();
         if (!title) {
-          return {
-            content: [{ type: 'text', text: '推荐失败：歌名不能为空' }],
-            isError: true,
-          };
+          throw new Error('推荐失败：歌名不能为空');
         }
         try {
           const res = await hub.post('/v1/recommend', {
@@ -227,8 +228,8 @@ export function createMusicTools({ hubUrl, token }) {
             id: args.id ? String(args.id) : null,
           });
           return (
-            `已经放进待推队列：《${title}》${artist ? ` — ${artist}` : ''}。` +
-            (res?.ok ? '桌面端下次拉取时会看到它。' : '')
+            `${res.duplicate ? '这首已在待听队列' : '已放进待听队列'}：《${title}》${artist ? ` — ${artist}` : ''}。` +
+            `推荐 ID：${res.item.id}。收件箱：${inboxUrl}`
           );
         } catch (err) {
           throw err;

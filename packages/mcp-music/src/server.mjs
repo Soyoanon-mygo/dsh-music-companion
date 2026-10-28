@@ -15,6 +15,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 import { loadConfig, pick } from '../../shared/config.mjs';
+import { createRecommendationTools } from '../../watcher/lib/recommendation-tools.mjs';
 
 const CFG = loadConfig();
 
@@ -148,9 +149,12 @@ const server = new Server(
 );
 
 const text = (s) => ({ content: [{ type: 'text', text: s }] });
+const inboxUrl = `${HUB}/recommendations`;
+const recommendationTools = createRecommendationTools({ get: hubGet, post: hubPost }, inboxUrl);
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
+    ...recommendationTools.map(({ name, description, parameters }) => ({ name, description, inputSchema: parameters })),
     {
       name: 'music_now_playing',
       description:
@@ -176,7 +180,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'music_recommend',
       description:
-        '把一首歌推荐给主人。你了解了他的口味之后可以主动推，推完会出现在桌面端的待推队列里。reason 要写人话，会原样展示给他看。',
+        '把一首歌放进推荐收件箱。推之前先用 music_recommendations 看待听和已跳过的歌；重复待听不会新增。reason 会原样展示给主人。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -226,6 +230,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args = {} } = req.params;
 
   try {
+    const recommendationTool = recommendationTools.find((tool) => tool.name === name);
+    if (recommendationTool) return text(await recommendationTool.execute(args));
     if (name === 'music_now_playing') {
       const now = await hubGet('/v1/now-playing');
       return text(describeNow(now));
@@ -250,8 +256,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         id: args.id ? String(args.id) : null,
       });
       return text(
-        `已经放进待推队列：《${title}》${artist ? ` — ${artist}` : ''}。` +
-          (res?.ok ? '桌面端下次拉取时会看到它。' : ''),
+        `${res.duplicate ? '这首已在待听队列' : '已放进待听队列'}：《${title}》${artist ? ` — ${artist}` : ''}。` +
+          `推荐 ID：${res.item.id}。收件箱：${inboxUrl}`,
       );
     }
 

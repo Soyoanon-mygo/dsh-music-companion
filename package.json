@@ -10,6 +10,8 @@
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
+    "test:mcp-inbox": "node --test test/mcp-inbox.mjs",
+    "demo:inbox": "node scripts/demo-inbox.mjs",
     "hub": "node packages/music-hub/src/hub.mjs",
     "watcher": "node packages/watcher/watcher.mjs",
     "mcp": "node packages/mcp-music/src/server.mjs",

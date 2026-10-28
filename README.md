@@ -123,7 +123,7 @@ dsh plugin --profile <你的 profile> add /absolute/path/to/packages/watcher
 
 1. 起一个本地 hub（`127.0.0.1:8787`，数据在 `~/.dsh-music-companion/data/`）
 2. 每 20 秒读一次系统媒体会话，上报给 hub
-3. 把四个工具注册进 agent（`music_now_playing` / `music_history` / `music_recommend` / `music_taste`）
+3. 把六个工具注册进 agent（音乐状态、历史、推荐、口味，以及推荐收件箱与反馈）
 
 重启后直接问她「我在听什么」，不用另起进程、也不用配 MCP。
 
@@ -279,14 +279,61 @@ Windows 上别在 PowerShell 里硬拼 JSON 引号，写成文件再 `--data-bin
 |---|---|
 | `music_now_playing` | 现在在听什么：歌名、歌手、专辑、ID、时长、进度、累计听歌时间、来源 |
 | `music_history(limit)` | 最近听过的歌，倒序，附「上一首听了多久」 |
-| `music_recommend(title, artist, reason?, id?)` | 把一首歌放进推荐队列，等桌面端拉取 |
+| `music_recommend(title, artist, reason?, id?)` | 把一首歌放进推荐收件箱，返回推荐 ID 与收件箱地址 |
 | `music_taste(...)` | 读/写她对主人口味的了解。不带参数是读，带参数是整体覆盖写 |
+| `music_recommendations(status?, limit?, query?)` | 查看待听 / 已听过 / 已跳过的推荐，包含推荐理由、歌曲链接和主人反馈 |
+| `music_recommendation_feedback(recommendationId, status, note?)` | 标记听过、跳过或放回待听，可附一句反馈 |
 
-前两个只读，后两个有副作用。
+`music_now_playing`、`music_history`、`music_recommendations` 只读，其余工具可写入数据。
 
 **推荐闭环**：`music_recommend` 写进去的是 `status: "pending"`。等你真的听了那首歌（watcher 上报的歌名/歌手能对上），hub 会自动把它标成 `listened` 并记下听到的时刻——这样她下次就知道自己的推荐准不准。
 
 **口味怎么来的**：`music_taste` 是一个空槽，插件不替你总结。她可以自己从 `music_history` 里看出「这个人连续听了三首回春丹」，然后调 `music_taste` 写下来：歌手亲密度（-5..5）、风格标签、几句笔记。下次再推歌前先读一次，就不会推你已经明确不喜欢的东西。
+
+### 推荐收件箱
+
+![推荐收件箱（示例数据）](docs/images/recommendation-inbox.png)
+
+推荐有了一个可以实际打开的地方：启动 hub 后，在浏览器访问 [本机推荐收件箱](http://127.0.0.1:8787/recommendations)；自建服务器则访问 `<hub 地址>/recommendations`。跨机部署需要同步更新 hub，界面由 hub 提供。
+
+1. 输入 hub 访问令牌。插件内置 hub 使用 `hub.embeddedToken`，默认 `local-dev`；独立 hub 使用 `MUSIC_HUB_TOKEN` 或 `hub.token`。令牌仅保存在当前浏览器标签页中，通过请求头发送。
+2. 按「待听」「已听过」「已跳过」筛选，或搜索歌名、歌手、推荐理由和反馈。有网易云歌曲 ID 的推荐可直接打开歌曲页；缺少 ID 时提供歌曲搜索入口。
+3. 听过后可以标记「听过了」，不感兴趣则跳过，也能重新放回待听。展开「留一句反馈」可保存一句具体意见。打开链接本身不会标记已听，不会自动播放或切歌。
+
+agent 可以先用 `music_recommendations(status="skipped")` 看你跳过了哪些歌及原因，再决定下一次推荐。`music_recommendation_feedback` 用的是**推荐 ID**，由收件箱返回；它与网易云的歌曲 ID 是两回事。反馈不会自动覆盖 `music_taste`，口味仍由 agent 自己维护。
+
+同一首待听歌曲重复推荐只保留一条。网易云的精确 ID 优先用于自动确认已听；没有可比较的 ID 时，按完整歌名与歌手匹配，避免把现场版、翻唱版或名字相似的歌混在一起。已跳过的记录不会被播放上报改回已听。队列继续只保留最近 200 条推荐，旧数据无需迁移。
+
+想先看效果，可以用独立的示例数据运行：
+
+```bash
+npm run demo:inbox
+```
+
+终端会显示一个临时的本机地址和演示令牌。演示不读个人配置，关闭后清理临时数据。
+
+#### 收件箱 API
+
+所有 `/v1/*` 接口仍需鉴权：
+
+| 接口 | 说明 |
+|---|---|
+| `GET /v1/recommendations` | 保留原有全部推荐、从旧到新的返回顺序；额外返回 `counts` 和匹配总数 `total` |
+| `GET /v1/recommendations?status=pending&order=newest&limit=20&q=乐队` | 状态可为 `pending/listened/skipped/all`，`limit` 为 1..200，`q` 搜索文本 |
+| `POST /v1/recommend` | 兼容原来的 `id` 参数，歌曲 ID 单独存为 `songId`；返回推荐 `item` 和是否重复的 `duplicate` |
+| `POST /v1/recommendations/<推荐ID>/feedback` | JSON：`{"status":"skipped","note":"想听更轻快的"}`；`note` 选填、最多 500 字，可用空字符串清除 |
+
+`recommendations.json` 继续保存所有推荐、状态和反馈。界面是静态文件，不会把未鉴权的听歌数据或令牌嵌入 HTML，也不加载外部脚本、图片或字体。
+
+#### 验证
+
+```bash
+npm test
+npm ci --prefix packages/mcp-music
+npm run test:mcp-inbox
+```
+
+第一项不需要安装依赖，覆盖队列逻辑以及插件 / 独立 hub 的真实 HTTP 请求。MCP 联调使用现有的官方 SDK，以 stdio 调用实际服务。
 
 ### 数据长什么样
 

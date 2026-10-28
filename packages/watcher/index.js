@@ -4,7 +4,7 @@
  * 一个插件做完四件事：
  *   1. 起一个本地 hub（收/存/给），除非 config.json 里的 hub.url 指向了远端
  *   2. 每 20 秒读一次系统媒体会话（SMTC），把变化推给 hub
- *   3. 向宿主注册四个工具：music_now_playing / music_history / music_recommend / music_taste
+ *   3. 向宿主注册音乐状态、推荐收件箱与口味工具
  *   4. 用 ctx.effect 管生命周期：插件卸载 / 桌面端退出时自动停掉定时器与 http server
  *
  * 逻辑全在 `lib/` 下，CLI 入口（`watcher.mjs`）也复用同一套。
@@ -87,7 +87,7 @@ export function apply(ctx, config = {}) {
     trace(`使用远端 hub：${hubUrlRaw}`);
   }
 
-  /** 2. 四个工具（失败也不该拦住上报） */
+  /** 2. 音乐工具（失败也不该拦住上报） */
   let registered = 0;
   try {
     const defs = createMusicTools({ hubUrl: effectiveHubUrl, token: effectiveToken });

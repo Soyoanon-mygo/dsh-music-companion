@@ -21,3 +21,5 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm test
       - run: npm run test:smoke
+      - run: npm ci --prefix packages/mcp-music --no-audit --no-fund
+      - run: npm run test:mcp-inbox

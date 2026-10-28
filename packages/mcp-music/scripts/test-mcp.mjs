@@ -7,18 +7,23 @@
  */
 
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { unusedPort } from '../../../test/inbox-fixture.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..', '..', '..'); // packages/mcp-music/scripts → repo root
-const DATA_DIR = path.join(ROOT, '.smoke-mcp-data');
-const PORT = 18790;
+const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'music-mcp-smoke-'));
+const CONFIG = path.join(DATA_DIR, 'config.json');
+fs.writeFileSync(CONFIG, JSON.stringify({ behavior: { onSongChange: 'silent' } }));
+const PORT = await unusedPort();
 const TOKEN = 'mcp-smoke-token';
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -38,16 +43,15 @@ async function waitFor(url, timeoutMs = 8000) {
   throw new Error(`${url} 没起来`);
 }
 
-fs.rmSync(DATA_DIR, { recursive: true, force: true });
-
 const hub = spawn(process.execPath, [path.join(ROOT, 'packages/music-hub/src/hub.mjs')], {
   env: {
     ...process.env,
     MUSIC_HUB_PORT: String(PORT),
+    MUSIC_HUB_HOST: '127.0.0.1',
     MUSIC_HUB_TOKEN: TOKEN,
     MUSIC_HUB_DATA: DATA_DIR,
     // 别读到开发机上的真实 config.json（可能连着公网 hub）
-    MUSIC_CONFIG: path.join(DATA_DIR, 'no-config.json'),
+    MUSIC_CONFIG: CONFIG,
   },
   stdio: 'ignore',
 });
@@ -70,7 +74,7 @@ try {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [path.join(ROOT, 'packages/mcp-music/src/server.mjs')],
-    env: { ...process.env, MUSIC_HUB_URL: BASE, MUSIC_HUB_TOKEN: TOKEN },
+    env: { ...process.env, MUSIC_CONFIG: CONFIG, MUSIC_HUB_URL: BASE, MUSIC_HUB_TOKEN: TOKEN },
     stderr: 'pipe',
   });
 
@@ -80,7 +84,7 @@ try {
 
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
-  assert.deepEqual(names, ['music_history', 'music_now_playing', 'music_recommend', 'music_taste']);
+  assert.deepEqual(names, ['music_history', 'music_now_playing', 'music_recommend', 'music_recommendation_feedback', 'music_recommendations', 'music_taste']);
   console.log(`✓ 工具列表正确：${names.join(', ')}`);
 
   const now = await client.callTool({ name: 'music_now_playing', arguments: {} });
@@ -164,8 +168,9 @@ try {
   failed = true;
   console.error('\n失败：', err.message);
 } finally {
+  const stopped = hub.exitCode === null ? once(hub, 'exit') : Promise.resolve();
   hub.kill();
-  await sleep(300);
+  await stopped;
   fs.rmSync(DATA_DIR, { recursive: true, force: true });
   process.exit(failed ? 1 : 0);
 }

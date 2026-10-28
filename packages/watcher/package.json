@@ -1,7 +1,7 @@
 {
   "name": "@dsh-music/watcher",
   "version": "0.4.1",
-  "description": "Reads the Windows system media session (SMTC), keeps a local hub, and exposes four music tools to DSH agents. Works as a self-contained host plugin or as a standalone CLI.",
+  "description": "Reads the Windows system media session (SMTC), keeps a local hub with a recommendation inbox, and exposes six music tools to DSH agents. Works as a self-contained host plugin or as a standalone CLI.",
   "license": "MIT",
   "type": "module",
   "main": "index.js",
@@ -24,6 +24,10 @@
     "lib/hub.mjs",
     "lib/notify.mjs",
     "lib/tools.mjs",
+    "lib/recommendations.mjs",
+    "lib/recommendation-tools.mjs",
+    "lib/inbox.mjs",
+    "ui/*",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg"

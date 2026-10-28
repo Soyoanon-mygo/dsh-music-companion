@@ -27,6 +27,8 @@ import { fileURLToPath } from 'node:url';
 
 import { loadConfig, pick, pickNumber, describeConfig } from '../../shared/config.mjs';
 import { createNotifier } from './notify.mjs';
+import { createRecommendationQueue } from '../../watcher/lib/recommendations.mjs';
+import { serveInbox } from '../../watcher/lib/inbox.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CFG = loadConfig();
@@ -148,6 +150,11 @@ const authorized = (req, url) => {
 
 /** 主动发言策略：只在"换歌 + 在播放 + 不吵人"时叫醒她；叫不醒也不影响记录 */
 const notifier = createNotifier(CFG.behavior, log);
+const recommendations = createRecommendationQueue({
+  read: () => readJson(FILES.recs, []),
+  write: (items) => writeJson(FILES.recs, items),
+  log,
+});
 
 /** 上一首歌，用来判断是不是真的换歌了 */
 let lastKey = (() => {
@@ -219,6 +226,7 @@ function handleNowPlaying(body) {
     stale: false,
   };
   writeJson(FILES.now, state);
+  if (playing) recommendations.markListened(track, state.source);
 
   // 只有"换歌 + 在播放"才记历史，暂停/继续不记
   if (changed && playing) {
@@ -230,8 +238,6 @@ function handleNowPlaying(body) {
       listenedSeconds,
     });
     lastKey = key;
-    // 你听到的正好是她推荐过的，就把这条推荐标成「听了」——推荐才有闭环
-    markRecommendations(track);
     // 叫她，但不告诉她该说什么 —— 说不说、说什么由她自己决定
     notifier.maybeNotify(state, true);
     log(
@@ -253,54 +259,6 @@ function handleGetNowPlaying() {
     status: 200,
     payload: { ...state, stale: age > STALE_MS, ageSeconds: Math.round(age / 1000) },
   };
-}
-
-function handleRecommend(body) {
-  if (!body || !body.title) {
-    return { status: 400, payload: { ok: false, error: 'title is required' } };
-  }
-  const list = readJson(FILES.recs, []);
-  const item = {
-    id: `r${Date.now().toString(36)}`,
-    title: String(body.title).slice(0, 200),
-    artist: body.artist ? String(body.artist).slice(0, 100) : '',
-    reason: body.reason ? String(body.reason).slice(0, 500) : '',
-    status: 'pending', // pending / listened / skipped
-    at: new Date().toISOString(),
-  };
-  list.push(item);
-  // 只留最近 200 条，免得无限长
-  writeJson(FILES.recs, list.slice(-200));
-  log(`recommend += ${item.title}${item.artist ? ` — ${item.artist}` : ''}`);
-  return { status: 200, payload: { ok: true, item } };
-}
-
-/** 把「用户真的听了」这件事标到推荐记录上 —— 推荐才有闭环 */
-const normText = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
-
-function markRecommendations(track) {
-  const list = readJson(FILES.recs, []);
-  if (!list.length) return;
-  const t = normText(track.title);
-  if (!t) return;
-  const a = normText((track.artists || []).join('/'));
-  let updated = false;
-  for (const rec of list) {
-    if (rec.status && rec.status !== 'pending') continue;
-    const rt = normText(rec.title);
-    const ra = normText(rec.artist);
-    if (!rt) continue;
-    const titleHit = t === rt || t.includes(rt) || rt.includes(t);
-    const artistHit = !ra || !a || a.includes(ra) || ra.includes(a);
-    if (titleHit && artistHit) {
-      rec.status = 'listened';
-      rec.listenedAt = new Date().toISOString();
-      rec.listenedTrack = { title: track.title, artists: track.artists };
-      updated = true;
-      log(`recommend hit: 《${rec.title}》 被听到了`);
-    }
-  }
-  if (updated) writeJson(FILES.recs, list);
 }
 
 function handleGetTaste() {
@@ -346,11 +304,19 @@ const server = http.createServer(async (req, res) => {
   const route = `${req.method} ${url.pathname}`;
 
   try {
+    if (serveInbox(req, res, url.pathname)) return;
     // 所有 /v1/* 都要 token —— 这个 hub 可能直接暴露在公网，
     // 就算是只读接口，也不该让陌生人知道你此刻在听什么。
     // /health 例外，留给探针。
     if (url.pathname.startsWith('/v1/') && !authorized(req, url)) {
       return send(res, 401, { ok: false, error: 'unauthorized' });
+    }
+
+    const feedback = /^\/v1\/recommendations\/([^/]+)\/feedback$/.exec(url.pathname);
+    if (req.method === 'POST' && feedback) {
+      const body = await readBody(req);
+      const { status, payload } = recommendations.feedback(decodeURIComponent(feedback[1]), body);
+      return send(res, status, payload);
     }
 
     switch (route) {
@@ -366,7 +332,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       case 'GET /v1/recommendations':
-        return send(res, 200, { ok: true, items: readJson(FILES.recs, []) });
+        return send(res, ...Object.values(recommendations.list(url.searchParams)));
 
       case 'GET /v1/taste':
         return send(res, ...Object.values(handleGetTaste()));
@@ -379,7 +345,7 @@ const server = http.createServer(async (req, res) => {
 
       case 'POST /v1/recommend': {
         const body = await readBody(req);
-        const { status, payload } = handleRecommend(body);
+        const { status, payload } = recommendations.recommend(body);
         return send(res, status, payload);
       }
 
@@ -394,7 +360,7 @@ const server = http.createServer(async (req, res) => {
     }
   } catch (err) {
     log('request failed:', err.message);
-    return send(res, 500, { ok: false, error: err.message });
+    return send(res, err instanceof SyntaxError || err instanceof URIError ? 400 : 500, { ok: false, error: err.message });
   }
 });
 

@@ -22,6 +22,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { createNotifier } from './notify.mjs';
+import { createRecommendationQueue } from './recommendations.mjs';
+import { serveInbox } from './inbox.mjs';
 
 export function createHub(options = {}) {
   const PORT = Number(options.port) > 0 ? Number(options.port) : 8787;
@@ -140,6 +142,11 @@ export function createHub(options = {}) {
   /* ---------------------------------------------------------------- */
 
   const notifier = createNotifier(behavior, log);
+  const recommendations = createRecommendationQueue({
+    read: () => readJson(FILES.recs, []),
+    write: (items) => writeJson(FILES.recs, items),
+    log,
+  });
 
   let lastKey = (() => {
     const prev = readJson(FILES.now, null);
@@ -210,11 +217,11 @@ export function createHub(options = {}) {
       stale: false,
     };
     writeJson(FILES.now, state);
+    if (playing) recommendations.markListened(track, state.source);
 
     if (changed && playing) {
       appendHistory({ at: now, track, device: state.device, listenedSeconds });
       lastKey = key;
-      markRecommendations(track);
       notifier.maybeNotify(state, true);
       log(
         `history += ${track.title} — ${track.artists.join('/') || '未知歌手'}` +
@@ -233,52 +240,6 @@ export function createHub(options = {}) {
       status: 200,
       payload: { ...state, stale: age > STALE_MS, ageSeconds: Math.round(age / 1000) },
     };
-  }
-
-  function handleRecommend(body) {
-    if (!body || !body.title) {
-      return { status: 400, payload: { ok: false, error: 'title is required' } };
-    }
-    const list = readJson(FILES.recs, []);
-    const item = {
-      id: `r${Date.now().toString(36)}`,
-      title: String(body.title).slice(0, 200),
-      artist: body.artist ? String(body.artist).slice(0, 100) : '',
-      reason: body.reason ? String(body.reason).slice(0, 500) : '',
-      status: 'pending',
-      at: new Date().toISOString(),
-    };
-    list.push(item);
-    writeJson(FILES.recs, list.slice(-200));
-    log(`recommend += ${item.title}${item.artist ? ` — ${item.artist}` : ''}`);
-    return { status: 200, payload: { ok: true, item } };
-  }
-
-  const normText = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
-
-  function markRecommendations(track) {
-    const list = readJson(FILES.recs, []);
-    if (!list.length) return;
-    const t = normText(track.title);
-    if (!t) return;
-    const a = normText((track.artists || []).join('/'));
-    let updated = false;
-    for (const rec of list) {
-      if (rec.status && rec.status !== 'pending') continue;
-      const rt = normText(rec.title);
-      const ra = normText(rec.artist);
-      if (!rt) continue;
-      const titleHit = t === rt || t.includes(rt) || rt.includes(t);
-      const artistHit = !ra || !a || a.includes(ra) || ra.includes(a);
-      if (titleHit && artistHit) {
-        rec.status = 'listened';
-        rec.listenedAt = new Date().toISOString();
-        rec.listenedTrack = { title: track.title, artists: track.artists };
-        updated = true;
-        log(`recommend hit: 《${rec.title}》 被听到了`);
-      }
-    }
-    if (updated) writeJson(FILES.recs, list);
   }
 
   function handleGetTaste() {
@@ -324,8 +285,16 @@ export function createHub(options = {}) {
     const route = `${req.method} ${url.pathname}`;
 
     try {
+      if (serveInbox(req, res, url.pathname)) return;
       if (url.pathname.startsWith('/v1/') && !authorized(req, url)) {
         return send(res, 401, { ok: false, error: 'unauthorized' });
+      }
+
+      const feedback = /^\/v1\/recommendations\/([^/]+)\/feedback$/.exec(url.pathname);
+      if (req.method === 'POST' && feedback) {
+        const body = await readBody(req);
+        const { status, payload } = recommendations.feedback(decodeURIComponent(feedback[1]), body);
+        return send(res, status, payload);
       }
 
       switch (route) {
@@ -345,7 +314,7 @@ export function createHub(options = {}) {
         }
 
         case 'GET /v1/recommendations':
-          return send(res, 200, { ok: true, items: readJson(FILES.recs, []) });
+          return send(res, ...Object.values(recommendations.list(url.searchParams)));
 
         case 'GET /v1/taste':
           return send(res, ...Object.values(handleGetTaste()));
@@ -358,7 +327,7 @@ export function createHub(options = {}) {
 
         case 'POST /v1/recommend': {
           const body = await readBody(req);
-          const { status, payload } = handleRecommend(body);
+          const { status, payload } = recommendations.recommend(body);
           return send(res, status, payload);
         }
 
@@ -373,7 +342,7 @@ export function createHub(options = {}) {
       }
     } catch (err) {
       log('request failed:', err.message);
-      return send(res, 500, { ok: false, error: err.message });
+      return send(res, err instanceof SyntaxError || err instanceof URIError ? 400 : 500, { ok: false, error: err.message });
     }
   });
 
